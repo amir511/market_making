@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+<title>How Market Making Works — an interactive walkthrough</title>
+<style>
+  :root{
+    --bg:#0B0E14; --bg2:#0F141D; --panel:#121826; --panel2:#0E131E;
+    --line:#1C2433; --line2:#262F40;
+    --txt:#E6EDF3; --dim:#8A94A6; --dim2:#5C6677;
+    --bid:#28D9A3; --ask:#FF5C72; --fair:#4DA3FF; --res:#B98BFF; --hedge:#FFB454;
+    --pos:#28D9A3; --neg:#FF5C72; --accent:#4DA3FF;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+    --ui:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:radial-gradient(1200px 700px at 70% -10%,#141b2a 0%,var(--bg) 55%);
+    color:var(--txt);font-family:var(--ui);font-size:14px;line-height:1.45;
+    -webkit-font-smoothing:antialiased;overflow-x:hidden;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:18px 18px 40px}
+
+  /* Header */
+  header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+  .mark{display:flex;align-items:center;gap:10px}
+  .glyph{width:34px;height:34px;border-radius:8px;background:linear-gradient(135deg,#16324a,#0e1a28);
+    border:1px solid #1d3550;display:grid;place-items:center;position:relative;overflow:hidden}
+  .glyph::before,.glyph::after{content:"";position:absolute;width:7px;border-radius:2px}
+  .glyph::before{height:13px;background:var(--bid);left:9px;top:11px}
+  .glyph::after{height:13px;background:var(--ask);right:9px;top:11px}
+  h1{font-size:16px;margin:0;letter-spacing:.2px;font-weight:650}
+  h1 .sub{display:block;font-size:11.5px;color:var(--dim);font-weight:450;letter-spacing:.3px}
+  .modes{margin-left:auto;display:flex;background:var(--panel2);border:1px solid var(--line);
+    border-radius:10px;padding:3px;gap:2px}
+  .modes button{font:inherit;font-size:12.5px;color:var(--dim);background:none;border:0;
+    padding:7px 13px;border-radius:7px;cursor:pointer;display:flex;align-items:center;gap:6px}
+  .modes button.on{background:linear-gradient(180deg,#1b2741,#142036);color:var(--txt);
+    box-shadow:inset 0 0 0 1px var(--line2)}
+  .dotm{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.7}
+
+  /* Layout */
+  .stage{display:grid;grid-template-columns:1fr 286px;gap:14px}
+  .chartcard{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);
+    border-radius:14px;padding:10px 10px 8px;position:relative;min-height:340px}
+  canvas{display:block;width:100%;height:420px;border-radius:8px}
+  .legend{display:flex;flex-wrap:wrap;gap:12px;padding:8px 4px 2px;font-size:11px;color:var(--dim)}
+  .legend span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+  .sw{width:12px;height:3px;border-radius:2px;display:inline-block}
+  .sw.dot{width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent}
+
+  /* HUD */
+  .hud{display:flex;flex-direction:column;gap:10px}
+  .card{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);
+    border-radius:12px;padding:11px 12px}
+  .card h3{margin:0 0 9px;font-size:10.5px;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim2);font-weight:650}
+  .row{display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;font-size:13px}
+  .row .k{color:var(--dim)}
+  .row .v{font-family:var(--mono);font-size:13.5px;font-variant-numeric:tabular-nums}
+  .v.bid{color:var(--bid)} .v.ask{color:var(--ask)} .v.fair{color:var(--fair)} .v.res{color:var(--res)}
+  /* inventory bar */
+  .invwrap{margin-top:4px}
+  .invbar{position:relative;height:16px;background:#0a0f17;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+  .invmid{position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--line2)}
+  .invfill{position:absolute;top:1px;bottom:1px;border-radius:3px;transition:none}
+  .invcap{position:absolute;top:-1px;bottom:-1px;width:2px;background:var(--ask);opacity:.5}
+  .invlabels{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--dim2);margin-top:3px}
+  .pnl .v{font-size:14px;font-weight:600}
+  .pos{color:var(--pos)} .neg{color:var(--neg)}
+
+  /* equations */
+  .eqs{font-family:var(--mono);font-size:11.5px;line-height:1.7}
+  .eq{padding:6px 8px;border-radius:7px;border:1px solid transparent;margin-bottom:5px;background:#0a0f17;color:var(--dim)}
+  .eq b{color:var(--txt);font-weight:600}
+  .eq .hl{color:var(--accent)}
+  .eq.glow{border-color:var(--accent);box-shadow:0 0 0 1px rgba(77,163,255,.25),0 0 18px rgba(77,163,255,.12);background:#0c1422}
+  .eq .lbl{display:block;color:var(--dim2);font-size:10px;letter-spacing:.4px;margin-bottom:1px}
+
+  /* caption / lower third */
+  .caption{margin-top:14px;background:linear-gradient(180deg,rgba(18,24,38,.96),rgba(12,17,28,.96));
+    border:1px solid var(--line2);border-radius:14px;padding:14px 16px;display:flex;gap:14px;align-items:flex-start}
+  .chip{flex:0 0 auto;display:flex;flex-direction:column;gap:6px;min-width:104px}
+  .chiptag{font-size:10px;letter-spacing:1.3px;text-transform:uppercase;color:var(--accent);font-weight:700}
+  .chipnum{font-family:var(--mono);font-size:11px;color:var(--dim)}
+  .progress{display:flex;gap:4px;margin-top:2px}
+  .pdot{width:7px;height:7px;border-radius:50%;background:var(--line2)}
+  .pdot.on{background:var(--accent)} .pdot.done{background:#2b4a6e}
+  .captext{flex:1;min-width:0}
+  .captext .title{font-weight:650;font-size:14.5px;margin-bottom:3px}
+  .captext p{margin:0;color:#C6CFDC;font-size:13.5px}
+  .captext .key{color:var(--txt);font-weight:600}
+  .navbtns{display:flex;gap:7px;flex:0 0 auto;align-self:center}
+
+  button.btn{font:inherit;font-size:12.5px;color:var(--txt);background:linear-gradient(180deg,#1a2742,#13203a);
+    border:1px solid var(--line2);padding:8px 13px;border-radius:9px;cursor:pointer;white-space:nowrap;
+    transition:filter .15s,transform .05s}
+  button.btn:hover{filter:brightness(1.18)} button.btn:active{transform:translateY(1px)}
+  button.btn:disabled{opacity:.4;cursor:default;filter:none}
+  button.btn.primary{background:linear-gradient(180deg,#1f6feb,#1858c6);border-color:#2f74d8}
+  button.btn.ghost{background:#0e1422}
+  button.btn.sm{padding:6px 10px;font-size:12px}
+
+  /* controls */
+  .controls{margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+    background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:9px 12px}
+  .controls .grp{display:flex;align-items:center;gap:8px}
+  .speed{display:flex;align-items:center;gap:8px;color:var(--dim);font-size:12px}
+  input[type=range]{-webkit-appearance:none;appearance:none;height:4px;background:var(--line2);border-radius:3px;outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;
+    background:var(--accent);cursor:pointer;border:2px solid #0c1422}
+  input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #0c1422}
+
+  /* sandbox */
+  .sandbox{margin-top:12px;display:none}
+  .sandbox.show{display:block}
+  .sbgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}
+  .ctrl{display:flex;flex-direction:column;gap:5px}
+  .ctrl label{font-size:11.5px;color:var(--dim);display:flex;justify-content:space-between}
+  .ctrl label b{color:var(--txt);font-family:var(--mono);font-size:11.5px}
+  .toggles{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+  .tog{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--dim);background:#0a0f17;
+    border:1px solid var(--line);border-radius:8px;padding:7px 10px;cursor:pointer;user-select:none}
+  .tog input{accent-color:var(--accent)}
+  .injectrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .hint{font-size:11.5px;color:var(--dim2);margin-top:8px}
+
+  .foot{margin-top:20px;font-size:11px;color:var(--dim2);line-height:1.6;max-width:760px}
+  .foot b{color:var(--dim)}
+
+  @media (max-width:880px){
+    .stage{grid-template-columns:1fr}
+    canvas{height:340px}
+    .modes{margin-left:0;width:100%;justify-content:center}
+    header{gap:10px}
+    .caption{flex-wrap:wrap}
+    .chip{min-width:0;flex-direction:row;align-items:center;gap:10px;width:100%}
+    .navbtns{width:100%;justify-content:flex-end}
+  }
+  @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="mark">
+      <div class="glyph"></div>
+      <h1>The Market Maker's Desk
+        <span class="sub">Watch quotes, spread, inventory &amp; risk play out live</span>
+      </h1>
+    </div>
+    <div class="modes" role="tablist" aria-label="Mode">
+      <button id="mGuided" class="on" role="tab" aria-selected="true"><span class="dotm"></span>Guided walkthrough</button>
+      <button id="mSandbox" role="tab" aria-selected="false"><span class="dotm"></span>Free play</button>
+    </div>
+  </header>
+
+  <div class="stage">
+    <!-- CHART -->
+    <div class="chartcard">
+      <canvas id="chart" aria-label="Live market-making chart"></canvas>
+      <div class="legend">
+        <span><i class="sw" style="background:var(--fair)"></i>Fair value (est.)</span>
+        <span><i class="sw" style="background:var(--res);opacity:.9"></i>Reservation price</span>
+        <span><i class="sw" style="background:var(--bid)"></i>Your bid (buy limit)</span>
+        <span><i class="sw" style="background:var(--ask)"></i>Your ask (sell limit)</span>
+        <span><i class="sw dot" style="border-bottom:6px solid var(--bid)"></i>You bought</span>
+        <span><i class="sw dot" style="border-top:6px solid var(--ask)"></i>You sold</span>
+        <span><i class="sw" style="background:var(--hedge)"></i>Hedge / flatten</span>
+      </div>
+    </div>
+
+    <!-- HUD -->
+    <div class="hud">
+      <div class="card">
+        <h3>Market &amp; quotes</h3>
+        <div class="row"><span class="k">Fair value</span><span class="v fair" id="hFair">—</span></div>
+        <div class="row"><span class="k">Volatility σ</span><span class="v" id="hVol">—</span></div>
+        <div class="row"><span class="k">Reservation</span><span class="v res" id="hRes">—</span></div>
+        <div class="row"><span class="k">Ask (sell)</span><span class="v ask" id="hAsk">—</span></div>
+        <div class="row"><span class="k">Bid (buy)</span><span class="v bid" id="hBid">—</span></div>
+        <div class="row"><span class="k">Spread</span><span class="v" id="hSpread">—</span></div>
+      </div>
+
+      <div class="card">
+        <h3>Inventory (position)</h3>
+        <div class="row"><span class="k">Net position</span><span class="v" id="hInv">0 lots</span></div>
+        <div class="invwrap">
+          <div class="invbar" id="invbar">
+            <div class="invmid"></div>
+            <div class="invfill" id="invfill"></div>
+          </div>
+          <div class="invlabels"><span id="invMin">−40</span><span>flat</span><span id="invMax">+40</span></div>
+        </div>
+      </div>
+
+      <div class="card pnl">
+        <h3>Profit &amp; loss</h3>
+        <div class="row"><span class="k">Spread captured</span><span class="v pos" id="hCap">$0</span></div>
+        <div class="row"><span class="k">Inventory P&amp;L</span><span class="v" id="hInvPnl">$0</span></div>
+        <div class="row" style="border-top:1px solid var(--line);margin-top:4px;padding-top:7px">
+          <span class="k">Total P&amp;L</span><span class="v" id="hTotal">$0</span></div>
+        <div class="row"><span class="k">Fills</span><span class="v" id="hFills">0</span></div>
+      </div>
+
+      <div class="card">
+        <h3>The math, live</h3>
+        <div class="eqs">
+          <div class="eq" id="eqRes"><span class="lbl">reservation price (inventory skew)</span>
+            <b>r</b> = fair − inv×k = <span class="hl" id="eFair">—</span> − <span id="eInv">0</span>×<span id="eK">0.0016</span> = <b id="eRes">—</b></div>
+          <div class="eq" id="eqHalf"><span class="lbl">half-spread (vol widening)</span>
+            <b>h</b> = base + k<sub>σ</sub>×σ = <span id="eBase">0.05</span> + <span id="eVolK">1.2</span>×<span class="hl" id="eVol">—</span> = <b id="eHalf">—</b></div>
+          <div class="eq" id="eqQuote"><span class="lbl">your two quotes</span>
+            bid = r−h = <b class="hl" id="eBid" style="color:var(--bid)">—</b> &nbsp; ask = r+h = <b id="eAsk" style="color:var(--ask)">—</b></div>
+          <div class="eq" id="eqPnl"><span class="lbl">profit identity: spread + inventory P&amp;L</span>
+            P&amp;L = <b id="ePcap">$0</b> <span id="ePop">+</span> <b id="ePinv">$0</b> = <b id="ePtot">$0</b></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CAPTION / LOWER THIRD -->
+  <div class="caption" id="caption">
+    <div class="chip">
+      <span class="chiptag" id="chTag">CHAPTER</span>
+      <span class="chipnum" id="chNum">1 / 10</span>
+      <div class="progress" id="prog"></div>
+    </div>
+    <div class="captext">
+      <div class="title" id="capTitle">—</div>
+      <p id="capBody">—</p>
+    </div>
+    <div class="navbtns" id="guidedNav">
+      <button class="btn ghost sm" id="btnBack">◂ Back</button>
+      <button class="btn primary sm" id="btnNext">Next ▸</button>
+    </div>
+  </div>
+
+  <!-- CONTROLS -->
+  <div class="controls">
+    <div class="grp">
+      <button class="btn sm" id="btnPlay">❚❚ Pause</button>
+      <button class="btn ghost sm" id="btnStep">Step ▸</button>
+      <button class="btn ghost sm" id="btnReset">↻ Restart</button>
+    </div>
+    <div class="speed">
+      <span>Speed</span>
+      <input type="range" id="speed" min="0.25" max="3" step="0.05" value="1" style="width:120px" />
+      <span class="v" id="speedV" style="font-family:var(--mono);color:var(--dim);width:34px">1.0×</span>
+    </div>
+  </div>
+
+  <!-- SANDBOX -->
+  <div class="sandbox" id="sandbox">
+    <div class="card">
+      <h3>Tune the strategy</h3>
+      <div class="sbgrid">
+        <div class="ctrl"><label>Base half-spread <b id="vBase">$0.05</b></label>
+          <input type="range" id="sBase" min="0.01" max="0.16" step="0.005" value="0.05"></div>
+        <div class="ctrl"><label>Vol → spread sensitivity <b id="vVolK">1.2</b></label>
+          <input type="range" id="sVolK" min="0" max="4" step="0.1" value="1.2"></div>
+        <div class="ctrl"><label>Inventory skew k <b id="vSkew">0.0016</b></label>
+          <input type="range" id="sSkew" min="0" max="0.006" step="0.0002" value="0.0016"></div>
+        <div class="ctrl"><label>Max inventory (lots) <b id="vMax">40</b></label>
+          <input type="range" id="sMax" min="8" max="80" step="2" value="40"></div>
+        <div class="ctrl"><label>Order-flow intensity <b id="vFlow">0.45</b></label>
+          <input type="range" id="sFlow" min="0.15" max="0.9" step="0.05" value="0.45"></div>
+        <div class="ctrl"><label>Baseline volatility <b id="vStep">0.030</b></label>
+          <input type="range" id="sStep" min="0.01" max="0.09" step="0.005" value="0.03"></div>
+      </div>
+      <div class="toggles">
+        <label class="tog"><input type="checkbox" id="tSkew" checked> Inventory skew on</label>
+        <label class="tog"><input type="checkbox" id="tHedge" checked> Auto-hedge at limit</label>
+        <label class="tog"><input type="checkbox" id="tFair" checked> Show fair value</label>
+        <label class="tog"><input type="checkbox" id="tRes" checked> Show reservation</label>
+      </div>
+      <div class="injectrow">
+        <button class="btn sm" id="iVol">⚡ Vol spike</button>
+        <button class="btn sm" id="iTox">☠ Toxic sell flow</button>
+        <button class="btn sm" id="iBuy">▲ Buy pressure</button>
+        <button class="btn sm" id="iSell">▼ Sell pressure</button>
+        <button class="btn sm" id="iFlat">⚑ Flatten now</button>
+      </div>
+      <div class="hint">Turn <b>skew</b> off and watch inventory wander to the cap — risk balloons even though the spread still pays.
+        Turn it on to see quotes lean against the position. Fire a <b>toxic flow</b> burst to feel adverse selection bite.</div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <b>What this is.</b> A simplified simulation of a continuous two-sided market maker, in the spirit of the Avellaneda–Stoikov model.
+    Ordinary fills arrive from <b>uninformed flow</b> whose intensity falls as a quote sits further from fair value, so the spread is genuinely
+    profitable on a random walk. Real desks add layers (order-book depth, latency, queue position, multiple venues, correlated hedges) this leaves out.
+    Numbers are illustrative, not trading advice.
+  </div>
+</div>
+
+<script>
+"use strict";
+(function(){
+  // ---------- constants & display scaling ----------
+  const TICK = 0.01;      // price tick size
+  const LOT  = 100;       // shares per fill, used only to scale $ figures for display
+  const VIS  = 72;        // visible candles
+  const TPC  = 6;         // ticks per candle
+  const MAXKEEP = 4000;   // candle ring before trimming
+  const GHOST = 14, FLASH = 10;
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const MOTION = reduce ? 1 : 0;
+
+  // ---------- tunable params (bound to sandbox) ----------
+  const P = {
+    baseStep:0.030, baseHalf:0.05, volK:1.2, skewK:0.0016,
+    alphaFair:0.06, betaVol:0.05, maxInv:40, hedgeThresh:32, hedgeChunk:8,
+    fillA:0.45, fillK:11.0, autoHedge:true, skewOn:true, showFair:true, showRes:true,
+  };
+  // transient scenario injections
+  const inj = { spikeT:0, toxicT:0, flowBias:0, flowT:0, drift:0, capOverride:null, skewOverride:null };
+
+  // ---------- RNG ----------
+  let _s = 1234567 >>> 0;
+  function rand(){ _s = (_s + 0x6D2B79F5)|0; let t=Math.imul(_s ^ _s>>>15, 1|_s); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }
+  function gauss(){ let u=0,v=0; while(u===0)u=rand(); while(v===0)v=rand(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+
+  // ---------- state ----------
+  let s, candles, fairArr, resArr, fills, ghosts, cur, tickInCandle, candleBase, candleCounter;
+  let drawBid, drawAsk, flashBid, flashAsk, flashHedge, edgePulse;
+  let mmQuoting = true;
+  const sched = []; let chapterTick = 0;
+
+  function resetSim(){
+    s = { truePrice:100, fairEst:100, prevTrue:100, varEst:P.baseStep*P.baseStep, vol:P.baseStep,
+          inv:0, cash:0, spreadCaptured:0, bid:null, ask:null, quoteBid:true, quoteAsk:true,
+          half:P.baseHalf, reservation:100, buys:0, sells:0, hedges:0 };
+    candles=[]; fairArr=[]; resArr=[]; fills=[]; ghosts=[];
+    cur=null; tickInCandle=0; candleBase=0; candleCounter=0;
+    drawBid=99.95; drawAsk=100.05; flashBid=0; flashAsk=0; flashHedge=0; edgePulse=0;
+    sched.length=0; chapterTick=0;
+  }
+
+  function roundTick(x){ return Math.round(x/TICK)*TICK; }
+  function fillProb(d){ const lam=P.fillA*Math.exp(-P.fillK*Math.max(0,d)); return 1-Math.exp(-lam); }
+  function totalPnL(){ return s.cash + s.inv*s.fairEst; }
+
+  function recordFill(side, price){
+    fills.push({ xabs: candleCounter + (tickInCandle/TPC), price, side, born:0 });
+    if(fills.length>400) fills.splice(0, fills.length-400);
+  }
+  function doHedge(){
+    const q=Math.min(P.hedgeChunk, Math.abs(s.inv)); if(q<=0) return;
+    const c=s.half;
+    if(s.inv>0){ s.inv-=q; s.cash += q*(s.fairEst - c); } else { s.inv+=q; s.cash -= q*(s.fairEst + c); }
+    s.hedges++; recordFill('hedge', s.fairEst); flashHedge=FLASH;
+  }
+  function flattenNow(){ let g=0; while(Math.abs(s.inv)>0 && g++<60) doHedge(); }
+
+  // ---------- one simulation tick ----------
+  function simTick(){
+    // run any scheduled chapter actions
+    for(let i=sched.length-1;i>=0;i--){ if(chapterTick>=sched[i].at){ sched[i].fn(); sched.splice(i,1); } }
+    chapterTick++;
+
+    // 1) true price evolves
+    s.prevTrue=s.truePrice;
+    let sigma=P.baseStep;
+    if(inj.spikeT>0){ sigma=Math.max(sigma, 0.13); inj.spikeT--; }
+    let drift=inj.drift;
+    if(inj.toxicT>0){ drift += -0.05; }
+    s.truePrice += gauss()*sigma + drift;
+
+    // 2) volatility estimate (EWMA of true returns = realized vol the desk measures)
+    const ret=s.truePrice-s.prevTrue;
+    s.varEst=(1-P.betaVol)*s.varEst + P.betaVol*ret*ret;
+    s.vol=Math.sqrt(s.varEst);
+
+    // 3) a print lands near true price; MM updates fair-value estimate from the tape
+    const eff=s.truePrice + gauss()*0.04;
+    s.fairEst=(1-P.alphaFair)*s.fairEst + P.alphaFair*eff;
+
+    // 4) compute quotes
+    const skewOn = inj.skewOverride!=null ? inj.skewOverride : P.skewOn;
+    const cap    = inj.capOverride!=null ? inj.capOverride : P.maxInv;
+    const skew   = skewOn ? s.inv*P.skewK : 0;
+    s.reservation = s.fairEst - skew;
+    s.half = Math.max(TICK, P.baseHalf + P.volK*s.vol);
+    s.quoteBid = s.inv <  cap;
+    s.quoteAsk = s.inv > -cap;
+
+    if(mmQuoting){
+      const nb=roundTick(s.reservation - s.half);
+      const na=roundTick(s.reservation + s.half);
+      if(s.bid!=null && Math.abs(nb-s.bid)>=TICK){ ghosts.push({price:s.bid,side:'bid',life:GHOST}); flashBid=FLASH; }
+      if(s.ask!=null && Math.abs(na-s.ask)>=TICK){ ghosts.push({price:s.ask,side:'ask',life:GHOST}); flashAsk=FLASH; }
+      s.bid=nb; s.ask=na;
+
+      // 5) fills from order flow
+      let pBid=fillProb(s.fairEst - s.bid), pAsk=fillProb(s.ask - s.fairEst);
+      if(inj.toxicT>0) pBid*=3.0;                          // informed sellers hit the bid
+      if(inj.flowT>0){
+        const b=inj.flowBias;
+        if(b>0){ pBid*=(1+1.5*b); pAsk*=Math.max(0.1,1-0.6*b); }
+        else if(b<0){ pAsk*=(1+1.5*(-b)); pBid*=Math.max(0.1,1-0.6*(-b)); }
+        inj.flowT--;
+      }
+      if(s.quoteBid && rand()<pBid){ s.inv++; s.cash-=s.bid; s.buys++; s.spreadCaptured+=(s.fairEst-s.bid); recordFill('buy',s.bid); edgePulse=10; }
+      else if(s.quoteAsk && rand()<pAsk){ s.inv--; s.cash+=s.ask; s.sells++; s.spreadCaptured+=(s.ask-s.fairEst); recordFill('sell',s.ask); edgePulse=10; }
+    } else { s.bid=null; s.ask=null; }
+
+    // 6) auto-hedge
+    if(P.autoHedge && Math.abs(s.inv)>=P.hedgeThresh) doHedge();
+
+    // 7) candle bookkeeping
+    if(!cur) cur={o:s.truePrice,h:s.truePrice,l:s.truePrice,c:s.truePrice};
+    cur.c=s.truePrice; if(s.truePrice>cur.h)cur.h=s.truePrice; if(s.truePrice<cur.l)cur.l=s.truePrice;
+    tickInCandle++;
+    if(tickInCandle>=TPC){
+      candles.push(cur); fairArr.push(s.fairEst); resArr.push(s.reservation);
+      candleCounter++; cur=null; tickInCandle=0;
+      if(candles.length>MAXKEEP){
+        const d=600; candles.splice(0,d); fairArr.splice(0,d); resArr.splice(0,d);
+        candleBase+=d; fills=fills.filter(f=>f.xabs>=candleBase);
+      }
+    }
+  }
+
+  // ---------- canvas / rendering ----------
+  const cv=document.getElementById('chart'); const ctx=cv.getContext('2d');
+  let W=0,H=0,dpr=1;
+  function resize(){
+    dpr=Math.min(window.devicePixelRatio||1,2);
+    const r=cv.getBoundingClientRect(); W=r.width; H=r.height;
+    cv.width=Math.round(W*dpr); cv.height=Math.round(H*dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  window.addEventListener('resize', resize);
+
+  const padL=8, padR=66, padT=14, padB=18;
+  let rHi=100.5, rLo=99.5;   // eased price range
+  function plotW(){ return W-padL-padR; }
+  function plotH(){ return H-padT-padB; }
+  function xForPos(pos){ const first=candleCounter-VIS+1; const col=pos-first; return padL + (col+0.5)*(plotW()/VIS); }
+  function yForP(p){ return padT + (rHi-p)/(rHi-rLo)*plotH(); }
+
+  function computeRange(){
+    let hi=-1e9, lo=1e9;
+    const start=Math.max(0, candles.length-VIS);
+    for(let i=start;i<candles.length;i++){ if(candles[i].h>hi)hi=candles[i].h; if(candles[i].l<lo)lo=candles[i].l; }
+    if(cur){ hi=Math.max(hi,cur.h); lo=Math.min(lo,cur.l); }
+    const xs=[s.bid,s.ask,s.fairEst,s.reservation,drawBid,drawAsk];
+    for(const v of xs){ if(v!=null){ if(v>hi)hi=v; if(v<lo)lo=v; } }
+    if(hi<=-1e8){ hi=s.truePrice+0.5; lo=s.truePrice-0.5; }
+    const mid=(hi+lo)/2; let span=Math.max(hi-lo,0.30); span*=1.18;
+    const tHi=mid+span/2, tLo=mid-span/2;
+    const k=0.12; rHi+=(tHi-rHi)*k; rLo+=(tLo-rLo)*k;
+  }
+
+  function niceStep(span){ const raw=span/5; const p=Math.pow(10,Math.floor(Math.log10(raw)));
+    const n=raw/p; let m; if(n<1.5)m=1; else if(n<3)m=2; else if(n<7)m=5; else m=10; return m*p; }
+
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    // grid + axis
+    const span=rHi-rLo, step=niceStep(span);
+    ctx.font='10px '+getCSS('--mono');
+    ctx.textBaseline='middle';
+    const startG=Math.ceil(rLo/step)*step;
+    for(let g=startG; g<=rHi; g+=step){
+      const y=yForP(g);
+      ctx.strokeStyle='rgba(40,52,72,.5)'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(W-padR,y); ctx.stroke();
+      ctx.fillStyle=getCSS('--dim2'); ctx.textAlign='left';
+      ctx.fillText(g.toFixed(2), W-padR+6, y);
+    }
+
+    // spread band
+    if(mmQuoting){
+      const yb=yForP(drawBid), ya=yForP(drawAsk);
+      ctx.fillStyle='rgba(77,163,255,.05)';
+      ctx.fillRect(padL, ya, plotW(), yb-ya);
+    }
+
+    // fair & reservation lines
+    drawSeries(fairArr, getCSS('--fair'), 1.6, false, P.showFair, s.fairEst);
+    drawSeries(resArr,  getCSS('--res'),  1.4, true,  P.showRes,  s.reservation);
+
+    // candles
+    const cw=Math.max(2,(plotW()/VIS)*0.62);
+    const start=Math.max(0, candles.length-VIS);
+    for(let i=start;i<candles.length;i++){
+      drawCandle(candleBase+i, candles[i], cw);
+    }
+    if(cur) drawCandle(candleCounter, cur, cw);
+
+    // fills
+    for(const f of fills){
+      if(f.xabs < candleCounter-VIS+0.5) continue;
+      f.born++; const x=xForPos(f.xabs), y=yForP(f.price);
+      const pop=f.born<12?(1+(12-f.born)/12*0.9):1;
+      if(f.side==='hedge'){
+        ctx.fillStyle=getCSS('--hedge');
+        ctx.beginPath(); ctx.arc(x,y,3.1*pop,0,7); ctx.fill();
+      } else {
+        const up=f.side==='buy'; ctx.fillStyle=up?getCSS('--bid'):getCSS('--ask');
+        const r=4.2*pop; ctx.beginPath();
+        if(up){ ctx.moveTo(x,y+r); ctx.lineTo(x-r,y-r*0.4); ctx.lineTo(x+r,y-r*0.4); }
+        else  { ctx.moveTo(x,y-r); ctx.lineTo(x-r,y+r*0.4); ctx.lineTo(x+r,y+r*0.4); }
+        ctx.closePath(); ctx.fill();
+      }
+    }
+
+    // ghosts (cancelled / shifted orders)
+    for(let i=ghosts.length-1;i>=0;i--){
+      const g=ghosts[i]; g.life--; if(g.life<=0){ ghosts.splice(i,1); continue; }
+      const a=g.life/GHOST*0.5, y=yForP(g.price);
+      ctx.strokeStyle=(g.side==='bid'?'rgba(40,217,163,':'rgba(255,92,114,')+a+')';
+      ctx.setLineDash([3,3]); ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(W-padR-72,y); ctx.lineTo(W-padR,y); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // live order tags
+    if(mmQuoting && s.bid!=null){
+      drawBid += (s.bid-drawBid)*(0.22+0.6*MOTION);
+      drawAsk += (s.ask-drawAsk)*(0.22+0.6*MOTION);
+      orderTag(drawAsk, getCSS('--ask'), 'ASK', s.ask, flashAsk, !s.quoteAsk);
+      orderTag(drawBid, getCSS('--bid'), 'BID', s.bid, flashBid, !s.quoteBid);
+      if(flashBid>0)flashBid--; if(flashAsk>0)flashAsk--;
+    }
+    if(flashHedge>0)flashHedge--;
+    if(edgePulse>0)edgePulse--;
+
+    // "now" divider
+    const xn=xForPos(candleCounter)+ (plotW()/VIS)*0.5;
+    ctx.strokeStyle='rgba(90,102,120,.25)'; ctx.setLineDash([2,4]);
+    ctx.beginPath(); ctx.moveTo(xn,padT); ctx.lineTo(xn,H-padB); ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  function drawCandle(pos, c, cw){
+    if(pos < candleCounter-VIS+1) return;
+    const x=xForPos(pos); const up=c.c>=c.o;
+    const col=up?getCSS('--bid'):getCSS('--ask');
+    ctx.strokeStyle=col; ctx.fillStyle=col; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(x,yForP(c.h)); ctx.lineTo(x,yForP(c.l)); ctx.stroke();
+    const yo=yForP(c.o), yc=yForP(c.c); let top=Math.min(yo,yc), h=Math.max(1,Math.abs(yc-yo));
+    ctx.globalAlpha=up?0.9:0.85; ctx.fillRect(x-cw/2, top, cw, h); ctx.globalAlpha=1;
+  }
+
+  function drawSeries(arr, color, lw, dash, show, liveVal){
+    if(!show || arr.length<2) return;
+    const start=Math.max(0, arr.length-VIS);
+    ctx.strokeStyle=color; ctx.lineWidth=lw; if(dash)ctx.setLineDash([5,4]);
+    ctx.beginPath(); let started=false;
+    for(let i=start;i<arr.length;i++){
+      const pos=candleBase+i; if(pos<candleCounter-VIS+1) continue;
+      const x=xForPos(pos), y=yForP(arr[i]);
+      if(!started){ctx.moveTo(x,y);started=true;} else ctx.lineTo(x,y);
+    }
+    // extend to live
+    if(cur){ ctx.lineTo(xForPos(candleCounter), yForP(liveVal)); }
+    ctx.stroke(); if(dash)ctx.setLineDash([]);
+  }
+
+  function orderTag(price, color, label, val, flash, suppressed){
+    const y=yForP(price); const x2=W-padR; const lineL=padL;
+    // level line
+    ctx.strokeStyle=color; ctx.globalAlpha=suppressed?0.28:0.85; ctx.lineWidth=1.4;
+    ctx.setLineDash([6,4]); ctx.beginPath(); ctx.moveTo(lineL,y); ctx.lineTo(x2,y); ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha=1;
+    // tag box at right
+    const tw=58, th=16, bx=x2-tw, by=y-th/2;
+    if(flash>0){ ctx.globalAlpha=flash/FLASH*0.5; ctx.fillStyle=color; ctx.fillRect(bx-2,by-2,tw+4,th+4); ctx.globalAlpha=1; }
+    ctx.fillStyle=suppressed?'#10161f':color; ctx.globalAlpha=suppressed?1:0.95;
+    roundRect(bx,by,tw,th,4); ctx.fill(); ctx.globalAlpha=1;
+    ctx.fillStyle=suppressed?color:'#06121a'; ctx.font='700 9px '+getCSS('--mono');
+    ctx.textAlign='left'; ctx.textBaseline='middle';
+    ctx.fillText(label, bx+6, y);
+    ctx.fillStyle=suppressed?getCSS('--dim'):'#06121a';
+    ctx.textAlign='right'; ctx.fillText(suppressed?'paused':val.toFixed(2), bx+tw-6, y);
+    ctx.textAlign='left';
+    // little resting-size pip on the left of line
+    if(!suppressed){ ctx.fillStyle=color; ctx.fillRect(lineL,y-4,3,8); }
+  }
+  function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r);
+    ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+  const _css={};
+  function getCSS(v){ if(_css[v])return _css[v]; _css[v]=getComputedStyle(document.documentElement).getPropertyValue(v).trim(); return _css[v]; }
+
+  // ---------- HUD update ----------
+  const $=id=>document.getElementById(id);
+  function money(x){ const v=x*LOT; const sign=v<0?'−':''; return sign+'$'+Math.abs(v).toFixed(0); }
+  function updateHUD(){
+    $('hFair').textContent=s.fairEst.toFixed(2);
+    $('hVol').textContent=s.vol.toFixed(3);
+    $('hRes').textContent=s.reservation.toFixed(2);
+    const hasQ = mmQuoting && s.bid!=null && s.ask!=null;
+    $('hAsk').textContent=hasQ?s.ask.toFixed(2):'—';
+    $('hBid').textContent=hasQ?s.bid.toFixed(2):'—';
+    $('hSpread').textContent=hasQ?('$'+(s.ask-s.bid).toFixed(2)):'—';
+    $('hInv').textContent=s.inv+' lots  ('+(s.inv>=0?'+':'')+(s.inv*LOT)+' sh)';
+    // inventory bar
+    const cap=inj.capOverride!=null?inj.capOverride:P.maxInv;
+    const frac=Math.max(-1,Math.min(1,s.inv/cap));
+    const f=$('invfill'); const w=Math.abs(frac)*50;
+    f.style.left=(frac>=0?50:50-w)+'%'; f.style.width=w+'%';
+    f.style.background=frac>=0?getCSS('--bid'):getCSS('--ask');
+    $('invMin').textContent='−'+cap; $('invMax').textContent='+'+cap;
+    // pnl
+    const cap$=s.spreadCaptured, tot=totalPnL(), invp=tot-cap$;
+    $('hCap').textContent=money(cap$);
+    const ip=$('hInvPnl'); ip.textContent=money(invp); ip.className='v '+(invp>=0?'pos':'neg');
+    const tt=$('hTotal'); tt.textContent=money(tot); tt.className='v '+(tot>=0?'pos':'neg');
+    $('hFills').textContent=(s.buys+s.sells)+(s.hedges?(' (+'+s.hedges+' hdg)'):'');
+    // equations
+    $('eFair').textContent=s.fairEst.toFixed(2);
+    $('eInv').textContent=(s.inv>=0?'+':'')+s.inv;
+    $('eK').textContent=P.skewK.toFixed(4);
+    $('eRes').textContent=s.reservation.toFixed(2);
+    $('eBase').textContent=P.baseHalf.toFixed(2);
+    $('eVolK').textContent=P.volK.toFixed(1);
+    $('eVol').textContent=s.vol.toFixed(3);
+    $('eHalf').textContent=s.half.toFixed(3);
+    $('eBid').textContent=hasQ?s.bid.toFixed(2):'—';
+    $('eAsk').textContent=hasQ?s.ask.toFixed(2):'—';
+    $('ePcap').textContent=money(cap$);
+    $('ePop').textContent = invp>=0 ? '+' : '−';
+    $('ePinv').textContent = '$'+Math.abs(invp*LOT).toFixed(0);
+    $('ePtot').textContent=money(tot);
+  }
+
+  // ---------- chapters ----------
+  function setEqGlow(id){ ['eqRes','eqHalf','eqQuote','eqPnl'].forEach(e=>$(e).classList.toggle('glow', e===id)); }
+  function resetInj(){ inj.spikeT=0; inj.toxicT=0; inj.flowBias=0; inj.flowT=0; inj.drift=0; inj.capOverride=null; inj.skewOverride=null; chapterTick=0; sched.length=0; }
+
+  const chapters=[
+    { tag:'THE TAPE', title:'There is a hidden "fair" price',
+      body:'These candles are the market discovering an unknown true value. The blue line is the maker\'s <span class="key">fair-value estimate</span> — a smoothed read of recent trades. Everything else is built around it. (No quotes yet.)',
+      glow:null, enter(){ resetInj(); mmQuoting=false; } },
+
+    { tag:'QUOTING', title:'Post a bid and an ask around fair value',
+      body:'The maker now shows two limit orders: a <span class="key">bid</span> (buy) just below fair and an <span class="key">ask</span> (sell) just above. The gap between them is the <span class="key">spread</span> — the shaded band. Wider spread = more edge per trade but fewer fills.',
+      glow:'eqQuote', enter(){ resetInj(); mmQuoting=true; } },
+
+    { tag:'THE EDGE', title:'Buy at the bid, sell at the ask, keep the difference',
+      body:'Each green triangle is a buy at your bid; each red is a sell at your ask. A round-trip pockets roughly the full spread. Watch <span class="key">Spread captured</span> climb — this is the maker\'s income from <span class="key">uninformed flow</span>.',
+      glow:'eqPnl', enter(){ resetInj(); mmQuoting=true; } },
+
+    { tag:'RE-QUOTING', title:'Fair value moves, so cancel and shift your quotes',
+      body:'As fair value drifts, both quotes are <span class="key">cancelled and re-posted</span> to stay centred (you\'ll see faint ghosts where orders just were). Stale quotes are dangerous — leave a bid too high and informed traders pick you off.',
+      glow:'eqQuote', enter(){ resetInj(); mmQuoting=true; inj.drift=0.028; inj.flowT=0;
+        sched.push({at:55,fn:()=>{inj.drift=-0.03;}},{at:120,fn:()=>{inj.drift=0.025;}},{at:185,fn:()=>{inj.drift=0;}}); } },
+
+    { tag:'INVENTORY', title:'Position builds up — skew quotes to lean against it',
+      body:'A wave of buyers leaves you <span class="key">short</span> (or sellers leave you long). First with <span class="key">skew off</span>: inventory runs away. Then skew switches <span class="key">on</span> — the violet <span class="key">reservation price</span> bends away from fair, pulling both quotes so you naturally trade back toward flat.',
+      glow:'eqRes', enter(){ resetInj(); mmQuoting=true; inj.flowBias=-0.85; inj.flowT=99999; inj.skewOverride=false;
+        sched.push({at:90,fn:()=>{inj.skewOverride=true;}}); } },
+
+    { tag:'VOLATILITY', title:'It gets choppy — widen the spread',
+      body:'A volatility spike hits. σ jumps, so the <span class="key">half-spread = base + k·σ</span> automatically widens (the band fattens) and fills slow down. You demand more edge precisely when holding risk is more expensive.',
+      glow:'eqHalf', enter(){ resetInj(); mmQuoting=true; inj.spikeT=150; } },
+
+    { tag:'LIMITS', title:'Hit the inventory cap — quote one side only',
+      body:'Skew slows accumulation but a hard <span class="key">position limit</span> is the backstop. As inventory pins the cap, the maker <span class="key">pulls the offending side</span> entirely (its tag reads "paused") and only quotes the side that reduces risk.',
+      glow:'eqRes', enter(){ resetInj(); mmQuoting=true; inj.flowBias=-1.0; inj.flowT=99999; inj.capOverride=14; } },
+
+    { tag:'ADVERSE SELECTION', title:'Toxic flow: getting picked off',
+      body:'Now <span class="key">informed</span> sellers hit your bid right before the price drops — you get loaded long into a fall. Watch <span class="key">Inventory P&L</span> turn red and swamp the spread you earned. This is the maker\'s real enemy; defences are wider spreads, skew, backing off, and hedging.',
+      glow:'eqPnl', enter(){ resetInj(); mmQuoting=true; P.autoHedge=false; inj.toxicT=85; } },
+
+    { tag:'HEDGING', title:'Risk too high? Cross the spread and flatten',
+      body:'When inventory or risk is too large (or the session is ending), the maker <span class="key">hedges</span> — trading out aggressively, paying the spread to do so (amber dots). It costs some edge but <span class="key">caps the downside</span> from a position gone wrong.',
+      glow:'eqPnl', enter(){ resetInj(); mmQuoting=true; P.autoHedge=false; inj.flowBias=-0.8; inj.flowT=40;
+        sched.push({at:50,fn:flattenNow},{at:120,fn:flattenNow}); } },
+
+    { tag:'RECAP', title:'P&L = spread captured − inventory losses',
+      body:'That\'s the whole game: <span class="key">harvest the spread</span> from uninformed flow, while four levers — <span class="key">skew, spread width, position limits, hedging</span> — keep inventory and adverse selection from eating the edge. Now switch to <span class="key">Free play</span> and break it yourself.',
+      glow:'eqPnl', enter(){ resetInj(); mmQuoting=true; P.autoHedge=true; } },
+  ];
+
+  let chap=0;
+  function loadChapter(i){
+    chap=Math.max(0,Math.min(chapters.length-1,i));
+    const c=chapters[chap];
+    $('chTag').textContent=c.tag; $('chNum').textContent=(chap+1)+' / '+chapters.length;
+    $('capTitle').textContent=c.title; $('capBody').innerHTML=c.body;
+    setEqGlow(c.glow);
+    $('btnBack').disabled=chap===0;
+    $('btnNext').textContent = chap===chapters.length-1 ? 'Free play ▸' : 'Next ▸';
+    // progress dots
+    const prog=$('prog'); prog.innerHTML='';
+    for(let k=0;k<chapters.length;k++){ const d=document.createElement('div');
+      d.className='pdot'+(k===chap?' on':(k<chap?' done':'')); prog.appendChild(d); }
+    c.enter();
+  }
+
+  // ---------- loop ----------
+  let playing=true, speed=1, acc=0, last=performance.now();
+  function frame(now){
+    try{
+      const dt=Math.min(now-last,100); last=now;
+      if(playing){
+        acc+=dt; const interval=70/speed;
+        let guard=0;
+        while(acc>=interval && guard++<8){ simTick(); acc-=interval; }
+      }
+      computeRange(); draw(); updateHUD();
+    } catch(err){ if(typeof console!=='undefined') console.error(err); }
+    requestAnimationFrame(frame);
+  }
+
+  // ---------- modes & controls ----------
+  let mode='guided';
+  function setMode(m){
+    mode=m;
+    $('mGuided').classList.toggle('on',m==='guided');
+    $('mSandbox').classList.toggle('on',m==='sandbox');
+    $('mGuided').setAttribute('aria-selected',m==='guided');
+    $('mSandbox').setAttribute('aria-selected',m==='sandbox');
+    $('sandbox').classList.toggle('show',m==='sandbox');
+    $('guidedNav').style.display = m==='guided'?'flex':'none';
+    if(m==='sandbox'){
+      resetInj(); mmQuoting=true; setEqGlow(null);
+      $('chTag').textContent='FREE PLAY'; $('chNum').textContent='sandbox';
+      $('prog').innerHTML='';
+      $('capTitle').textContent='Your desk — experiment freely';
+      $('capBody').innerHTML='Adjust the sliders and fire scenario buttons below. Try turning <span class="key">inventory skew</span> off, or hitting <span class="key">toxic sell flow</span>, and watch the P&L split react.';
+      syncSandbox();
+    } else { loadChapter(chap); }
+  }
+  $('mGuided').onclick=()=>setMode('guided');
+  $('mSandbox').onclick=()=>setMode('sandbox');
+
+  $('btnNext').onclick=()=>{ if(chap===chapters.length-1) setMode('sandbox'); else loadChapter(chap+1); };
+  $('btnBack').onclick=()=>loadChapter(chap-1);
+
+  function setPlaying(p){ playing=p; $('btnPlay').textContent=p?'❚❚ Pause':'▶ Play'; }
+  $('btnPlay').onclick=()=>setPlaying(!playing);
+  $('btnStep').onclick=()=>{ simTick(); computeRange(); draw(); updateHUD(); };
+  $('btnReset').onclick=()=>{ resetSim(); if(mode==='guided') loadChapter(chap); };
+  $('speed').oninput=e=>{ speed=parseFloat(e.target.value); $('speedV').textContent=speed.toFixed(1)+'×'; };
+
+  // sandbox bindings
+  function bindRange(id,obj,key,label,fmt){ const el=$(id); el.oninput=()=>{ obj[key]=parseFloat(el.value); $(label).textContent=fmt(obj[key]); }; }
+  bindRange('sBase',P,'baseHalf','vBase',v=>'$'+v.toFixed(2));
+  bindRange('sVolK',P,'volK','vVolK',v=>v.toFixed(1));
+  bindRange('sSkew',P,'skewK','vSkew',v=>v.toFixed(4));
+  bindRange('sMax',P,'maxInv','vMax',v=>String(v));
+  bindRange('sFlow',P,'fillA','vFlow',v=>v.toFixed(2));
+  bindRange('sStep',P,'baseStep','vStep',v=>v.toFixed(3));
+  $('tSkew').onchange=e=>P.skewOn=e.target.checked;
+  $('tHedge').onchange=e=>P.autoHedge=e.target.checked;
+  $('tFair').onchange=e=>P.showFair=e.target.checked;
+  $('tRes').onchange=e=>P.showRes=e.target.checked;
+  $('iVol').onclick=()=>{ inj.spikeT=150; };
+  $('iTox').onclick=()=>{ inj.toxicT=90; };
+  $('iBuy').onclick=()=>{ inj.flowBias=0.9; inj.flowT=130; };
+  $('iSell').onclick=()=>{ inj.flowBias=-0.9; inj.flowT=130; };
+  $('iFlat').onclick=flattenNow;
+  function syncSandbox(){
+    $('sBase').value=P.baseHalf; $('vBase').textContent='$'+P.baseHalf.toFixed(2);
+    $('sVolK').value=P.volK; $('vVolK').textContent=P.volK.toFixed(1);
+    $('sSkew').value=P.skewK; $('vSkew').textContent=P.skewK.toFixed(4);
+    $('sMax').value=P.maxInv; $('vMax').textContent=String(P.maxInv);
+    $('sFlow').value=P.fillA; $('vFlow').textContent=P.fillA.toFixed(2);
+    $('sStep').value=P.baseStep; $('vStep').textContent=P.baseStep.toFixed(3);
+    $('tSkew').checked=P.skewOn; $('tHedge').checked=P.autoHedge; $('tFair').checked=P.showFair; $('tRes').checked=P.showRes;
+  }
+
+  // keyboard
+  window.addEventListener('keydown',e=>{
+    if(e.target.tagName==='INPUT')return;
+    if(e.code==='Space'){ e.preventDefault(); setPlaying(!playing); }
+    else if(e.code==='ArrowRight'){ if(mode==='guided'){ if(chap<chapters.length-1)loadChapter(chap+1); else setMode('sandbox'); } else simTick(); }
+    else if(e.code==='ArrowLeft'){ if(mode==='guided'&&chap>0)loadChapter(chap-1); }
+  });
+
+  // ---------- boot ----------
+  resetSim(); resize();
+  // warm up price history (no trading) so the chart isn't empty on first paint
+  mmQuoting=false; for(let i=0;i<VIS*TPC;i++) simTick();
+  for(let i=0;i<40;i++) computeRange();   // settle the price window before first paint
+  loadChapter(0);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
